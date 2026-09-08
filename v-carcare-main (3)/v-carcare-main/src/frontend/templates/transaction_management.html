@@ -59,7 +59,7 @@
                     <div class="col-md-3"><label class="form-label text-secondary">หมวดหมู่</label><input id="category" class="form-control form-control-custom" placeholder="เช่น ค่าบริการ"></div>
                     <div class="col-md-5"><label class="form-label text-secondary">รายละเอียด</label><input id="description" class="form-control form-control-custom" placeholder="ระบุรายละเอียดรายการ"></div>
                     <div class="col-md-2"><label class="form-label text-secondary">จำนวนเงิน</label><input id="amount" type="number" min="0.01" step="0.01" class="form-control form-control-custom" placeholder="0.00"></div>
-                    <div class="col-md-2 d-flex align-items-end"><button class="btn {{ 'btn-success' if transaction_type == 'income' else 'bg-orange text-dark' }} fw-bold w-100" onclick="saveTransaction()">บันทึกรายการ</button></div>
+                    <div class="col-md-2 d-flex align-items-end"><button class="btn {{ 'btn-success' if transaction_type == 'income' else 'bg-orange text-dark' }} fw-bold w-100" onclick="openSaveTransactionConfirm()">บันทึกรายการ</button></div>
                 </div>
             </div>
             <div class="card-custom p-3 p-md-4">
@@ -68,6 +68,30 @@
             </div>
         </main>
     </div>
+    <div class="modal fade" id="transactionConfirmModal" tabindex="-1" aria-labelledby="transactionConfirmModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content bg-dark text-white border-secondary">
+                <div class="modal-header border-secondary">
+                    <h5 class="modal-title" id="transactionConfirmModalLabel"><i class="bi bi-check2-circle text-warning me-2"></i>ยืนยันการบันทึกรายการ</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="text-secondary mb-3">ระบบจะบันทึกรายการนี้เข้าประวัติบัญชีทันทีหลังกดยืนยัน</p>
+                    <div class="border border-secondary rounded p-3 bg-secondary bg-opacity-10">
+                        <div class="d-flex justify-content-between mb-2"><span class="text-secondary">ประเภท</span><strong id="confirm-transaction-type" class="text-white"></strong></div>
+                        <div class="d-flex justify-content-between mb-2"><span class="text-secondary">หมวดหมู่</span><strong id="confirm-transaction-category" class="text-white"></strong></div>
+                        <div class="d-flex justify-content-between mb-2"><span class="text-secondary">รายละเอียด</span><strong id="confirm-transaction-description" class="text-white text-end"></strong></div>
+                        <div class="d-flex justify-content-between"><span class="text-secondary">จำนวนเงิน</span><strong id="confirm-transaction-amount" class="text-orange"></strong></div>
+                    </div>
+                </div>
+                <div class="modal-footer border-secondary">
+                    <button type="button" class="btn btn-outline-light" data-bs-dismiss="modal">ยกเลิก</button>
+                    <button type="button" class="btn btn-warning fw-bold text-dark" onclick="confirmSaveTransaction()">ยืนยันบันทึก</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script>
         const transactionType = '{{ transaction_type }}';
         const typeLabel = transactionType === 'income' ? 'รายรับ' : 'รายจ่าย';
@@ -82,13 +106,28 @@
                 tbody.innerHTML = rows.length ? rows.map(item => `<tr><td class="text-secondary">${new Date(item.occurred_at).toLocaleString('th-TH')}</td><td>${escapeHtml(item.category)}</td><td>${escapeHtml(item.description)}</td><td class="text-end ${transactionType === 'income' ? 'text-success' : 'text-danger'} fw-bold">${Number(item.amount).toLocaleString(undefined, {minimumFractionDigits: 2})} บาท</td></tr>`).join('') : `<tr><td colspan="4" class="text-secondary">ยังไม่มีรายการ${typeLabel}</td></tr>`;
             } catch (error) { tbody.innerHTML = `<tr><td colspan="4" class="text-danger">${error.message}</td></tr>`; }
         }
-        async function saveTransaction() {
+        function openSaveTransactionConfirm() {
+            const category = document.getElementById('category').value.trim() || 'general';
+            const description = document.getElementById('description').value.trim();
+            const amount = Number(document.getElementById('amount').value);
+            if (!description || !Number.isFinite(amount) || amount <= 0) {
+                alert('กรุณากรอกรายละเอียดและจำนวนเงินให้ถูกต้อง');
+                return;
+            }
+            document.getElementById('confirm-transaction-type').innerText = transactionType === 'income' ? 'รายรับ' : 'รายจ่าย';
+            document.getElementById('confirm-transaction-category').innerText = category;
+            document.getElementById('confirm-transaction-description').innerText = description;
+            document.getElementById('confirm-transaction-amount').innerText = `${Number(amount).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})} บาท`;
+            bootstrap.Modal.getOrCreateInstance(document.getElementById('transactionConfirmModal')).show();
+        }
+        async function confirmSaveTransaction() {
             const category = document.getElementById('category').value.trim() || 'general';
             const description = document.getElementById('description').value.trim();
             const amount = Number(document.getElementById('amount').value);
             if (!description || !Number.isFinite(amount) || amount <= 0) return alert('กรุณากรอกรายละเอียดและจำนวนเงินให้ถูกต้อง');
             const res = await fetch('/api/finance/transactions', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({transaction_type:transactionType, category, description, amount})});
             if (!res.ok) return alert('บันทึกรายการไม่สำเร็จ');
+            bootstrap.Modal.getInstance(document.getElementById('transactionConfirmModal')).hide();
             window.location.href = '/finance';
         }
         loadTransactions();

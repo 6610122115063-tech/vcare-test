@@ -68,7 +68,7 @@
             <div class="card-custom p-3 p-md-4 mb-4 border-start border-warning border-5">
                 <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3 mb-3">
                     <div><h5 class="text-white fw-bold mb-1"><i class="bi bi-safe2 text-warning me-2"></i>เงินกองกลาง</h5><small class="text-secondary">รายจ่าย การเบิกพนักงาน เงินเดือน และค่าความเสียหาย จะตัดจากยอดนี้อัตโนมัติ</small></div>
-                    <div class="d-flex gap-2 flex-wrap"><button id="open-shop-btn" class="btn btn-primary fw-bold" onclick="openShop()"><i class="bi bi-shop me-1"></i>เปิดร้าน (นำเงินทอน 3,000 บาท)</button><button class="btn btn-success fw-bold" onclick="receiveCentralFund()"><i class="bi bi-plus-circle me-1"></i>ได้รับเงินกองกลางเพิ่ม</button><button class="btn btn-outline-warning" onclick="adjustCentralFund()"><i class="bi bi-pencil-square me-1"></i>แก้ไขยอด</button><button class="btn btn-warning fw-bold" onclick="closeCashFloat()"><i class="bi bi-box-arrow-in-down me-1"></i>ปิดร้าน / ฝากเงินทอน</button></div>
+                    <div class="d-flex gap-2 flex-wrap"><button id="open-shop-btn" class="btn btn-primary fw-bold" onclick="openShopConfirm()"><i class="bi bi-shop me-1"></i>เปิดร้าน (นำเงินทอน 3,000 บาท)</button><button class="btn btn-success fw-bold" onclick="openCentralFundDepositModal()"><i class="bi bi-plus-circle me-1"></i>ได้รับเงินกองกลางเพิ่ม</button><button class="btn btn-outline-warning" onclick="openCentralFundAdjustModal()"><i class="bi bi-pencil-square me-1"></i>แก้ไขยอด</button><button class="btn btn-warning fw-bold" onclick="openCloseCashFloatConfirm()"><i class="bi bi-box-arrow-in-down me-1"></i>ปิดร้าน / ฝากเงินทอน</button></div>
                 </div>
                 <div class="row g-3 align-items-center">
                     <div class="col-md-3"><small class="text-secondary d-block">ยอดกองกลางปัจจุบัน</small><h2 id="central-fund-balance" class="text-warning fw-bold mb-0">0.00 บาท</h2></div>
@@ -175,6 +175,29 @@
                 <div id="transaction-pagination" class="d-flex justify-content-between align-items-center gap-2 mt-3"></div>
             </div>
 
+        </div>
+    </div>
+
+    <div class="modal fade" id="centralFundConfirmModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content bg-dark text-white border-secondary">
+                <div class="modal-header border-secondary">
+                    <h5 class="modal-title" id="centralFundConfirmTitle">ยืนยันการทำรายการ</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="text-secondary small mb-3" id="centralFundConfirmSubtext">กรุณาตรวจสอบข้อมูลก่อนยืนยัน</p>
+                    <div class="border border-secondary rounded p-3 bg-secondary bg-opacity-10">
+                        <div class="d-flex justify-content-between mb-2"><span class="text-secondary">รายการ</span><strong id="centralFundConfirmAction" class="text-white"></strong></div>
+                        <div class="d-flex justify-content-between mb-2"><span class="text-secondary">จำนวนเงิน</span><strong id="centralFundConfirmAmount" class="text-warning"></strong></div>
+                        <div class="d-flex justify-content-between"><span class="text-secondary">หมายเหตุ</span><strong id="centralFundConfirmNote" class="text-white text-end"></strong></div>
+                    </div>
+                </div>
+                <div class="modal-footer border-secondary">
+                    <button type="button" class="btn btn-outline-light" data-bs-dismiss="modal">ยกเลิก</button>
+                    <button type="button" class="btn btn-warning fw-bold text-dark" id="centralFundConfirmButton">ยืนยัน</button>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -390,53 +413,77 @@
         } catch (err) { console.error(err); }
     }
 
-    async function openShop() {
-        if (!confirm('ยืนยันเปิดร้านและหักเงิน 3,000 บาทจากกองกลางทันที?')) return;
-        try {
-            const res = await fetch('/api/central-fund/open', { method: 'POST' });
-            const data = await res.json();
-            if (!res.ok) throw new Error(data.message || 'เปิดร้านไม่สำเร็จ');
-            await loadCentralFund();
-        } catch (err) { alert(err.message); }
+    let pendingCentralFundAction = null;
+
+    function showCentralFundConfirmation(action, title, amount, note, confirmHandler) {
+        pendingCentralFundAction = { action, confirmHandler };
+        document.getElementById('centralFundConfirmTitle').innerText = title;
+        document.getElementById('centralFundConfirmAction').innerText = action;
+        document.getElementById('centralFundConfirmAmount').innerText = amount;
+        document.getElementById('centralFundConfirmNote').innerText = note || '—';
+        document.getElementById('centralFundConfirmSubtext').innerText = 'กรุณาตรวจสอบข้อมูลก่อนยืนยันว่ามีการทำรายการถูกต้องแล้ว';
+        document.getElementById('centralFundConfirmButton').onclick = async () => {
+            if (pendingCentralFundAction && pendingCentralFundAction.confirmHandler) {
+                await pendingCentralFundAction.confirmHandler();
+            }
+            bootstrap.Modal.getInstance(document.getElementById('centralFundConfirmModal')).hide();
+        };
+        bootstrap.Modal.getOrCreateInstance(document.getElementById('centralFundConfirmModal')).show();
     }
 
-    async function adjustCentralFund() {
+    function openShopConfirm() {
+        showCentralFundConfirmation('เปิดร้าน', 'ยืนยันเปิดร้าน', '3,000.00 บาท', 'หักเงิน 3,000 บาทจากกองกลางทันที', async () => {
+            try {
+                const res = await fetch('/api/central-fund/open', { method: 'POST' });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.message || 'เปิดร้านไม่สำเร็จ');
+                await loadCentralFund();
+            } catch (err) { alert(err.message); }
+        });
+    }
+
+    function openCloseCashFloatConfirm() {
+        showCentralFundConfirmation('ปิดร้าน / ฝากเงินทอน', 'ยืนยันปิดร้าน', 'เงินทอนทั้งหมด', 'นำเงินทอนกลับเข้ากองกลาง', async () => {
+            try {
+                const res = await fetch('/api/central-fund/close-cash-float', { method: 'POST' });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.message || 'ปิดร้านไม่สำเร็จ');
+                await loadCentralFund();
+            } catch (err) { alert(err.message); }
+        });
+    }
+
+    function openCentralFundAdjustModal() {
         const value = prompt('ระบุยอดเงินกองกลางใหม่ (บาท)', centralFundBalance.toFixed(2));
         if (value === null) return;
         const balance = Number(value);
         if (!Number.isFinite(balance) || balance < 0) return alert('กรุณาระบุยอดเงินที่ถูกต้อง');
         const note = prompt('หมายเหตุการปรับยอด (ไม่บังคับ)', 'ปรับยอดเงินกองกลางโดยผู้จัดการ');
-        try {
-            const res = await fetch('/api/central-fund', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ balance, note }) });
-            const data = await res.json();
-            if (!res.ok) throw new Error(data.message || 'ปรับยอดไม่สำเร็จ');
-            await loadCentralFund();
-        } catch (err) { alert(err.message); }
+        showCentralFundConfirmation('ปรับยอดเงินกองกลาง', 'ยืนยันปรับยอดกองกลาง', `${balance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} บาท`, note || 'ปรับยอดเงินกองกลางโดยผู้จัดการ', async () => {
+            try {
+                const res = await fetch('/api/central-fund', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ balance, note: note || 'ปรับยอดเงินกองกลางโดยผู้จัดการ' }) });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.message || 'ปรับยอดไม่สำเร็จ');
+                await loadCentralFund();
+            } catch (err) { alert(err.message); }
+        });
     }
 
-    async function receiveCentralFund() {
+    function openCentralFundDepositModal() {
         const value = prompt('จำนวนเงินที่ได้รับเข้ากองกลาง (บาท)');
         if (value === null) return;
         const amount = Number(value);
         if (!Number.isFinite(amount) || amount <= 0) return alert('กรุณาระบุจำนวนเงินที่มากกว่า 0');
         const description = prompt('ที่มาของเงิน/หมายเหตุ (ไม่บังคับ)', 'ได้รับเงินเพิ่มเข้ากองกลาง');
-        try {
-            const res = await fetch('/api/central-fund/deposits', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ amount, description }) });
-            const data = await res.json();
-            if (!res.ok) throw new Error(data.message || 'บันทึกรับเงินไม่สำเร็จ');
-            await loadCentralFund();
-            loadFinance(currentMode, document.getElementById('start-date').value, document.getElementById('end-date').value, 1);
-        } catch (err) { alert(err.message); }
-    }
-
-    async function closeCashFloat() {
-        if (!confirm('ยืนยันนำเงินทอนทั้งหมดกลับเข้ากองกลางเมื่อปิดร้าน?')) return;
-        try {
-            const res = await fetch('/api/central-fund/close-cash-float', { method: 'POST' });
-            const data = await res.json();
-            if (!res.ok) throw new Error(data.message || 'ปิดร้านไม่สำเร็จ');
-            await loadCentralFund();
-        } catch (err) { alert(err.message); }
+        showCentralFundConfirmation('รับเงินเข้ากองกลาง', 'ยืนยันรับเงินเข้ากองกลาง', `${amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} บาท`, description || 'ได้รับเงินเพิ่มเข้ากองกลาง', async () => {
+            try {
+                const res = await fetch('/api/central-fund/deposits', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ amount, description: description || 'ได้รับเงินเพิ่มเข้ากองกลาง' }) });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.message || 'บันทึกรับเงินไม่สำเร็จ');
+                await loadCentralFund();
+                loadFinance(currentMode, document.getElementById('start-date').value, document.getElementById('end-date').value, 1);
+            } catch (err) { alert(err.message); }
+        });
     }
 
     function renderPagination(pagination) {

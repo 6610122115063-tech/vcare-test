@@ -171,8 +171,33 @@
         </div>
     </div>
 
+    <!-- Modal: ยืนยันคำขอเบิกเงิน -->
+    <div class="modal fade" id="confirmWithdrawalModal" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content bg-dark text-white border-secondary">
+                <div class="modal-header border-secondary">
+                    <h5 class="modal-title"><i class="bi bi-check-circle-fill text-warning me-2"></i>ยืนยันคำขอเบิกเงิน</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="text-secondary small mb-3">ตรวจสอบข้อมูลก่อนส่งคำขอ เพื่อป้องกันการเบิกเงินผิดจำนวน</p>
+                    <div class="border border-secondary rounded p-3 bg-secondary bg-opacity-10">
+                        <div class="d-flex justify-content-between mb-2"><span class="text-secondary">พนักงาน</span><strong id="confirm-withdrawal-staff" class="text-white"></strong></div>
+                        <div class="d-flex justify-content-between mb-2"><span class="text-secondary">จำนวนเงิน</span><strong id="confirm-withdrawal-amount" class="text-warning"></strong></div>
+                        <div class="d-flex justify-content-between"><span class="text-secondary">เหตุผล</span><strong id="confirm-withdrawal-reason" class="text-white text-end"></strong></div>
+                    </div>
+                </div>
+                <div class="modal-footer border-secondary">
+                    <button type="button" class="btn btn-outline-light" data-bs-dismiss="modal">ยกเลิก</button>
+                    <button type="button" class="btn btn-warning fw-bold text-dark" id="btn-confirm-withdrawal">ยืนยันส่งคำขอ</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script>
         let pendingNoteAction = null; // { id, status }
+        let pendingWithdrawalPayload = null;
 
         function showAlert(message, type) {
             document.getElementById('alert-box').innerHTML = `
@@ -195,6 +220,22 @@
                     reason: document.getElementById('modal-reason').value
                 };
 
+                if (!payload.staff_id || !Number.isFinite(payload.amount) || payload.amount <= 0) {
+                    showAlert('กรุณาเลือกพนักงานและระบุจำนวนเงินที่ขอเบิกให้ถูกต้อง', 'danger');
+                    return;
+                }
+
+                const selected = document.querySelector('#modal-staff-id option:checked');
+                const staffLabel = selected ? selected.textContent : 'พนักงาน';
+                document.getElementById('confirm-withdrawal-staff').textContent = staffLabel;
+                document.getElementById('confirm-withdrawal-amount').textContent = `${payload.amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} บาท`;
+                document.getElementById('confirm-withdrawal-reason').textContent = payload.reason || '—';
+                pendingWithdrawalPayload = payload;
+                bootstrap.Modal.getOrCreateInstance(document.getElementById('confirmWithdrawalModal')).show();
+            });
+
+            document.getElementById('btn-confirm-withdrawal').addEventListener('click', async () => {
+                if (!pendingWithdrawalPayload) return;
                 const btn = document.getElementById('btn-submit-withdrawal');
                 const originalText = btn.innerHTML;
                 btn.disabled = true;
@@ -204,7 +245,7 @@
                     const res = await fetch('/api/staff-withdrawals', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(payload)
+                        body: JSON.stringify(pendingWithdrawalPayload)
                     });
                     const data = await res.json();
 
@@ -214,8 +255,10 @@
 
                     const modalEl = document.getElementById('addWithdrawalModal');
                     bootstrap.Modal.getInstance(modalEl).hide();
+                    bootstrap.Modal.getInstance(document.getElementById('confirmWithdrawalModal')).hide();
                     document.getElementById('withdrawalForm').reset();
                     resetEligibilityBox();
+                    pendingWithdrawalPayload = null;
 
                     await loadWithdrawals();
 
